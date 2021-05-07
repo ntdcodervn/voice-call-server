@@ -35,41 +35,50 @@ const nocache = (req, res, next) => {
   res.header("Pragma", "no-cache");
   next();
 };
-
-app.get("/access-token", nocache, (req, res) => {
-  const channelName = req.query.channelName;
+// token expire time, hardcode to 3600 seconds = 1 hour
+var expirationTimeInSeconds = 3600;
+var role = RtcRole.PUBLISHER;
+app.get("/access-token", nocache, (req, resp) => {
+  var currentTimestamp = Math.floor(Date.now() / 1000);
+  var privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+  var channelName = req.query.channelName;
+  // use 0 if uid is not specified
+  var uid = req.query.uid || 0;
   if (!channelName) {
-    return res.status(500).json({ error: "channel is required" });
+    return resp.status(400).json({ error: "channel name is required" }).send();
   }
-
-  // get uid
-  let phone = req.query.phone;
-  if (!phone || phone == "") {
-    phone = 0;
-  }
-  // get role
-  let role = RtcRole.SUBSCRIBER;
-  if (req.query.role == "publisher") {
-    role = RtcRole.PUBLISHER;
-  }
-  // get the expire time
-  let expireTime = req.query.expireTime;
-  if (!expireTime || expireTime == "") {
-    expireTime = 3600;
-  } else {
-    expireTime = parseInt(expireTime, 10);
-  }
-  // calculate privilege expire time
-  const currentTime = Math.floor(Date.now() / 1000);
-  const privilegeExpireTime = currentTime + expireTime;
-
-  const token = RtcTokenBuilder.buildTokenWithUid(
+  var key = RtcTokenBuilder.buildTokenWithUid(
     configs.APP_ID,
     configs.APP_CERTIFICATE,
     channelName,
-    phone,
+    uid,
     role,
-    privilegeExpireTime
+    privilegeExpiredTs
   );
-  res.json({ token: token });
+  resp.header("Access-Control-Allow-Origin", "*");
+  //resp.header("Access-Control-Allow-Origin", "http://ip:port")
+  console.log(key);
+
+  return resp.json({ token: key }).send();
+});
+
+app.get("/access-token-rtm", nocache, (req, resp) => {
+  var currentTimestamp = Math.floor(Date.now() / 1000);
+  var privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+  var account = req.query.account;
+  if (!account) {
+    return resp.status(400).json({ error: "account is required" }).send();
+  }
+
+  var key = RtmTokenBuilder.buildToken(
+    configs.APP_ID,
+    configs.APP_CERTIFICATE,
+    account,
+    RtmRole,
+    privilegeExpiredTs
+  );
+
+  resp.header("Access-Control-Allow-Origin", "*");
+  //resp.header("Access-Control-Allow-Origin", "http://ip:port")
+  return resp.json({ token: key }).send();
 });
